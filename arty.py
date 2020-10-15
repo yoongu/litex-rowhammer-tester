@@ -296,6 +296,45 @@ class BaseSoC(SoCCore):
             self.add_csr("bulk_wr")
 
 
+            class BulkRead(Module, AutoCSR):
+                def __init__(self, dma, bankbits, colbits):
+                    self.enabled = CSRStorage()
+                    self.address  = CSRStorage(size=(32*1))
+                    self.dataword = CSRStorage(size=(32*4)) # pattern
+                    self.count    = CSRStorage(size=(32*1))
+                    self.reset    = CSRStorage()
+                    self.done     = CSRStatus()
+                    self.pointer  = CSRStatus(size=(32*1))
+
+                    cnt = Signal(32*1)
+                    self.sync += If(self.reset.storage, cnt.eq(0))
+                    self.sync += If(self.reset.storage, self.pointer.status.eq(0))
+                    self.sync += self.done.status.eq(self.count.storage == cnt)
+
+                    self.sync += If(dma.source.valid,
+                                     If(dma.source.data != self.dataword.storage,
+                                         self.pointer.status.eq(cnt)))
+
+                    self.sync += If(self.enabled.storage,
+                                     If(cnt < self.count.storage,
+                                         If(dma.sink.ready, cnt.eq(cnt + 1))))
+
+                    self.comb += [
+                        dma.sink.address.eq(self.address.storage + cnt),
+                        dma.sink.valid.eq(self.enabled.storage),
+                        dma.source.ready.eq(1),
+                    ]
+
+
+            port = self.sdram.crossbar.get_port()
+            self.submodules.bulk_rd_dma   = LiteDRAMDMAReader(port)
+            self.submodules.bulk_rd       = BulkRead(self.bulk_rd_dma,
+                                                     bankbits=self.sdram.controller.settings.geom.bankbits,
+                                                     colbits=self.sdram.controller.settings.geom.colbits)
+            self.add_csr("bulk_rd")
+
+
+
     def generate_sdram_phy_py_header(self):
         f = open("sdram_init.py", "w")
         f.write(get_sdram_phy_py_header(
