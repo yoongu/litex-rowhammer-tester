@@ -44,13 +44,10 @@ wb.regs.bulk_wr_enabled.write(0)
 #    print('0x{:08x}: 0x{:08x}'.format(0x40000000 + m * 4, wb.read(0x40000000 + m * 4, 1)[0] ))
 
 # --------------------------------------------------------------------
-#off = 0x10
-#wb.write(0x40000000 + off * 4 + 0, 0x0)
-#wb.write(0x40000000 + off * 4 + 4, 0x0)
-#wb.write(0x40000000 + off * 4 + 8, 0x0)
-#wb.write(0x40000000 + off * 4 + 12, 0x0)
-#print(':: ' + str(["0x{:08x}".format(w) for w in wb.read(0x40000000 + 0x0 * 4, 12)]))
-wb.write(0x40000000 + (23 * 1024 * 1024), 0x0)
+import random
+offset = random.Random(42).randrange(0x0, 256 * 1024 * 1024 - 32) # FIXME: Corner case
+print('offset: ' + str(offset) + ', expecting: ' + str((offset//16) * 16))
+wb.write(0x40000000 + offset, wb.read(0x40000000 + offset) ^ 0x000010000)
 # --------------------------------------------------------------------
 
 # Disable bulk read
@@ -75,8 +72,8 @@ wb.regs.bulk_rd_enabled.write(0)
 time.sleep(100 / 1e3)
 
 # --------------------
-print('pointer: 0x{:08x}'.format(wb.regs.bulk_rd_pointer.read()))
 ptr = wb.regs.bulk_rd_pointer.read()
-print("unmatching pattern somewhere around " + str(ptr * 4 * 4 / 1024 / 1024) + 'MiB')
+assert(ptr == (offset//16 + 1))
+print('pointer: 0x{:08x} : {:d}'.format(ptr, (ptr-1) * 4 * 4))
 
 wb.close()

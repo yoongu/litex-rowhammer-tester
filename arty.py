@@ -289,7 +289,7 @@ class BaseSoC(SoCCore):
                     ]
 
             port = self.sdram.crossbar.get_port()
-            self.submodules.bulk_wr_dma   = LiteDRAMDMAWriter(port)
+            self.submodules.bulk_wr_dma   = LiteDRAMDMAWriter(port=port,fifo_depth=1,fifo_buffered=False)
             self.submodules.bulk_wr       = BulkWrite(self.bulk_wr_dma,
                                                       bankbits=self.sdram.controller.settings.geom.bankbits,
                                                       colbits=self.sdram.controller.settings.geom.colbits)
@@ -306,6 +306,7 @@ class BaseSoC(SoCCore):
                     self.done     = CSRStatus()
                     self.pointer  = CSRStatus(size=(32*1))
 
+                    # FIXME: Different counters for unmatched pattern and read range
                     cnt = Signal(32*1)
                     self.sync += If(self.reset.storage, cnt.eq(0))
                     self.sync += If(self.reset.storage, self.pointer.status.eq(0))
@@ -327,7 +328,7 @@ class BaseSoC(SoCCore):
 
 
             port = self.sdram.crossbar.get_port()
-            self.submodules.bulk_rd_dma   = LiteDRAMDMAReader(port)
+            self.submodules.bulk_rd_dma   = LiteDRAMDMAReader(port=port,fifo_depth=1,fifo_buffered=False)
             self.submodules.bulk_rd       = BulkRead(self.bulk_rd_dma,
                                                      bankbits=self.sdram.controller.settings.geom.bankbits,
                                                      colbits=self.sdram.controller.settings.geom.colbits)
