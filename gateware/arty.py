@@ -40,8 +40,6 @@ from liteeth.frontend.etherbone import LiteEthEtherbone
 
 from litex.soc.cores import uart
 
-from rowhammer import RowHammerDMA
-
 # CRG ----------------------------------------------------------------------------------------------
 
 class _CRG(Module):
@@ -251,16 +249,9 @@ class BaseSoC(SoCCore):
         if args.sim:
             self.comb += platform.trace.eq(1)
 
-        # Rowhammer --------------------------------------------------------------------------------
-        from litedram.frontend.dma import LiteDRAMDMAReader, LiteDRAMDMAWriter
-
-        self.submodules.rowhammer_dma = LiteDRAMDMAReader(self.sdram.crossbar.get_port())
-        self.submodules.rowhammer = RowHammerDMA(self.rowhammer_dma)
-        self.add_csr("rowhammer")
-
         # Bist -------------------------------------------------------------------------------------
         if not args.no_memory_bist:
-            from litedram.frontend.bist import LiteDRAMBISTGenerator, LiteDRAMBISTChecker
+            from litedram.frontend.dma import LiteDRAMDMAReader, LiteDRAMDMAWriter
 
             def add_xram(self, name, origin, mem):
                 from litex.soc.interconnect import wishbone
@@ -301,6 +292,7 @@ class BaseSoC(SoCCore):
                     self.mem_mask     = CSRStorage(size=32)
                     self.data_mask    = CSRStorage(size=32) # patterns
 
+                    # FIXME: Increase fifo depth
                     dma = LiteDRAMDMAWriter(dram_port, fifo_depth=1)
                     self.submodules += dma
 
@@ -379,16 +371,19 @@ class BaseSoC(SoCCore):
                     self.done         = CSRStatus()
 
                     self.count        = CSRStorage(size=32)
+                    self.r_count      = CSRStatus(size=32)
                     self.pointer      = CSRStatus(size=32)
 
                     self.mem_base     = CSRStorage(size=32)
                     self.mem_mask     = CSRStorage(size=32)
                     self.data_mask    = CSRStorage(size=32) # patterns
 
+                    # FIXME: Increase fifo depth
                     dma = LiteDRAMDMAReader(dram_port, fifo_depth=1, fifo_buffered=False)
                     self.submodules += dma
 
                     cmd_counter = Signal(32)
+                    self.sync += self.r_count.status.eq(cmd_counter)
 
                     self.comb += [
                         w0_port.adr.eq(cmd_counter & self.data_mask.storage),

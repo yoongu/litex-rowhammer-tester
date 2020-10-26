@@ -88,33 +88,51 @@ class RowHammer:
         return addresses
 
     def attack(self, row1, row2, read_count, progress_header=''):
-        # Make sure that the row hammer module is in reset state
-        self.wb.regs.rowhammer_enabled.write(0)
-        self.wb.regs.rowhammer_count.read()  # clears the value
+        # Make sure that the module is in reset state
+        self.wb.regs.reader_start.write(0)
+        self.wb.regs.reader_reset.write(1)
+        self.wb.regs.reader_reset.write(0)
+
+        # pattern (ignored)
+        self.wb.write(self.wb.mems.pattern_rd_w0.base, 0x00000000)
+        self.wb.write(self.wb.mems.pattern_rd_w1.base, 0x00000000)
+        self.wb.write(self.wb.mems.pattern_rd_w2.base, 0x00000000)
+        self.wb.write(self.wb.mems.pattern_rd_w3.base, 0x00000000)
+
+        # Do not increment memory address
+        self.wb.regs.reader_mem_mask.write(0x00000000)
 
         # Configure the row hammer attacker
         addresses = [self.converter.encode_dma(bank=self.bank, col=self.column, row=r)
                      for r in [row1, row2]]
-        self.wb.regs.rowhammer_address1.write(addresses[0])
-        self.wb.regs.rowhammer_address2.write(addresses[1])
-        self.wb.regs.rowhammer_enabled.write(1)
 
-        row_strw = len(str(2**self.rowbits - 1))
+        self.wb.regs.reader_data_mask.write(0x00000001)
+        self.wb.write(self.wb.mems.pattern_rd_adr.base + 0x0, addresses[0])
+        self.wb.write(self.wb.mems.pattern_rd_adr.base + 0x4, addresses[1])
+
+        # how many
+        self.wb.regs.reader_count.write(int(read_count))
+
+        self.wb.regs.reader_start.write(1)
+        self.wb.regs.reader_start.write(0)
+
 
         def progress(count):
+            row_strw = len(str(2**self.rowbits - 1))
             s = '  {}'.format(progress_header + ' ' if progress_header else '')
             s += 'Rows = ({:{n}d},{:{n}d}), Count = {:5.2f}M / {:5.2f}M'.format(
                 row1, row2, count/1e6, read_count/1e6, n=row_strw)
             print(s, end='  \r')
 
         while True:
-            count = self.wb.regs.rowhammer_count.read()
-            progress(count)
-            if count >= read_count:
+            r_count = wb.regs.reader_r_count.read()
+            progress(r_count)
+            if wb.regs.reader_done.read():
                 break
+            else:
+                time.sleep(100 / 1e3)
 
-        self.wb.regs.rowhammer_enabled.write(0)
-        progress(self.wb.regs.rowhammer_count.read())  # also clears the value
+        progress(self.wb.regs.reader_r_count.read())  # also clears the value
         print()
 
     def row_access_iterator(self, burst=16):
@@ -162,7 +180,39 @@ class RowHammer:
 
         print('\nFilling memory with data ...')
         for row, n, base in self.row_access_iterator():
-            memfill(wb, n, pattern=row_patterns[row], base=base, burst=255)
+            # FIXME: move to memfill
+            if True:
+                # reset
+                wb.regs.writer_start.write(0)
+                wb.regs.writer_reset.write(1)
+                wb.regs.writer_reset.write(0)
+
+                # pattern
+                self.wb.write(self.wb.mems.pattern_w0.base, row_patterns[row])
+                self.wb.write(self.wb.mems.pattern_w1.base, row_patterns[row])
+                self.wb.write(self.wb.mems.pattern_w2.base, row_patterns[row])
+                self.wb.write(self.wb.mems.pattern_w3.base, row_patterns[row])
+
+                self.wb.write(self.wb.mems.pattern_adr.base, 0x00000000)
+                wb.regs.writer_data_mask.write(0x00000000)
+
+                assert(base & 0xf0000000 == 0x40000000)
+                wb.regs.writer_mem_base.write((base - 0x40000000) // 4 // 4)
+                wb.regs.writer_mem_mask.write(n)
+                wb.regs.writer_count.write(n // 4 + 1)
+
+                # run
+                wb.regs.writer_start.write(1)
+                wb.regs.writer_start.write(0)
+
+                while True:
+                    if wb.regs.writer_done.read():
+                        break
+                    else:
+                        time.sleep(1 / 1e6) # 1ms
+            else:
+                memfill(wb, n, pattern=row_patterns[row], base=base, burst=255)
+
             if row % row_progress == 0:
                 print('.', end='', flush=True)
 
@@ -243,6 +293,20 @@ if __name__ == "__main__":
         args.row_pairs = 'const'
         args.const_rows_pair = 88, 99
         args.no_refresh = True
+    elif args.experiment_no == 2:
+        args.nrows = 512
+        args.read_count = 15e6
+        args.pattern = '01_in_row'
+        args.row_pairs = 'const'
+        args.const_rows_pair = 10, 20
+        args.no_refresh = True
+    elif args.experiment_no == 3:
+        args.nrows = 512
+        args.read_count = 15e6
+        args.pattern = '01_in_row'
+        args.row_pairs = 'const'
+        args.const_rows_pair = 88, 99
+        args.no_refresh = False
 
     if args.srv:
         from wrapper import litex_srv
