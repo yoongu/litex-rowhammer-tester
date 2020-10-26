@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 
+import sys
 from litex import RemoteClient
+
+if '--srv' in sys.argv[1:]:
+    from wrapper import litex_srv
+    litex_srv()
 
 wb = RemoteClient()
 wb.open()
 
-# Trigger a reset of the SoC
 #wb.regs.ctrl_reset.write(1)
 
 # Dump all CSR registers of the SoC

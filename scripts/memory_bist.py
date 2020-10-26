@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 
 from litex import RemoteClient
-import time
+import time, sys
+
+if '--srv' in sys.argv[1:]:
+    from wrapper import litex_srv
+    litex_srv()
 
 wb = RemoteClient()
 wb.open()
